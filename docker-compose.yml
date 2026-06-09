@@ -1,0 +1,99 @@
+services:
+  gateway:
+    image: jojorisin/fake-store-gateway:latest
+    depends_on:
+      - auth
+      - orders
+      - products
+      - inventory
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
+      - SPRING_FLYWAY_BASELINE_VERSION=1
+      - SPRING_CLOUD_AWS_PARAMETERSTORE_ENABLED=false #overrides default in prod profile
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL:-http://auth-service:8081}
+      - PRODUCT_SERVICE_URL=${PRODUCT_SERVICE_URL:-http://product-service:8082}
+      - ORDER_SERVICE_URL=${ORDER_SERVICE_URL:-http://order-service:8083}
+      - INVENTORY_SERVICE_URL=${INVENTORY_SERVICE_URL:-http://inventory-service:8084}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - AUTH_PUBLIC_JWT_URL=${PUBLIC_JWT_URL:-http://auth-service:8081/api/internal/auth/.well-known/jwks.json}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:5173,http://localhost:4200}
+      - SERVER_PORT=${GATEWAY_PORT:-8080}
+
+  auth-service:
+    image: jojorisin/fake-store-authservice:latest
+    environment:
+      - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
+      - SPRING_FLYWAY_BASELINE_VERSION=1
+      - SPRING_CLOUD_AWS_PARAMETERSTORE_ENABLED=false #overrides default in prod profile
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=${AUTH_DB_URL:-jdbc:postgresql://auth-db:5432/authdb}
+      - SPRING_DATASOURCE_USERNAME=${AUTH_DB_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${AUTH_DB_PASS:-postgres}
+      - JWT_PRIVATE_KEY=${AUTH_JWT_PRIVATE_KEY}
+      - JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
+      - JWT_EXPIRATION_MINUTES=${AUTH_JWT_EXP:-15}
+      - APP_COOKIE_REFRESH_EXPIRATION_SECONDS=${AUTH_REFRESH_EXP:-604800}
+      - APP_COOKIE_SAME_SITE=${AUTH_COOKIE_SAMESITE:-Lax}
+      - APP_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-false}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=${AUTH_DDL:-none}
+      - SERVER_PORT=${AUTH_PORT:-8081}
+
+  order-service:
+    image: jojorisin/fake-store-orderservice:latest
+    environment:
+      - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
+      - SPRING_FLYWAY_BASELINE_VERSION=1
+      - SPRING_CLOUD_AWS_PARAMETERSTORE_ENABLED=false #overrides default in prod profile
+      - SPRING_PROFILES_ACTIVE=prod
+      - PRODUCT_SERVICE_URL=${PRODUCT_SERVICE_URL:-http://product-service:8082/api}
+      - INVENTORY_SERVICE_URL=${INVENTORY_SERVICE_URL:-http://inventory-service:8084/api}
+      - SPRING_DATASOURCE_URL=${ORDERS_DB_URL:-jdbc:postgresql://orders-db:5432/ordersdb}
+      - SPRING_DATASOURCE_USERNAME=${ORDERS_DB_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${ORDERS_DB_PASS:-postgres}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=${ORDERS_DDL:-none}
+      - AUTH_PUBLIC_JWT_URL=${PUBLIC_JWT_URL:-http://auth-service:8081/api/internal/auth/.well-known/jwks.json}
+      - STRIPE_API_KEY=${STRIPE_API_KEY}
+      - STRIPE_SUCCESS_URL=${STRIPE_SUCCESS_URL:-http://localhost:5173/success?session_id=}
+      - STRIPE_CANCEL_URL=${STRIPE_CANCEL_URL:-http://localhost:5173/cancel}
+      - ORDER_PAID_SQS=${ORDERS_ORDER_PAID_SQS}
+      - APP_QUEUES_ORDER_PAID_EVENTS=${ORDER_PAID_SQS}
+      - APP_QUEUES_CONFIRM_RESERVATION=${CONFIRM_RESERVATION_SQS}
+      - SERVER_PORT=${ORDERS_PORT:-8083}
+      - AWS_ACCESS_KEY_ID=${ORDERS_AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${ORDERS_AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-eu-north-1}
+
+  product-service:
+    image: jojorisin/fake-store-productservice:latest
+    environment:
+      - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
+      - SPRING_FLYWAY_BASELINE_VERSION=1
+      - SPRING_CLOUD_AWS_PARAMETERSTORE_ENABLED=false #overrides default in prod profile
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=${PRODUCTS_DB_URL:-jdbc:postgresql://products-db:5432/productsdb}
+      - SPRING_DATASOURCE_USERNAME=${PRODUCTS_DB_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${PRODUCTS_DB_PASS:-postgres}
+      - DDL_AUTO=${PRODUCTS_DDL:-none}
+      - AUTH_PUBLIC_JWT_URL=${PUBLIC_JWT_URL:-http://auth-service:8081/api/internal/auth/.well-known/jwks.json}
+      - FAKE_STORE_URL=https://fakestoreapi.com/products
+      - SERVER_PORT=${PRODUCTS_PORT:-8082}
+      - PRODUCT_SYNC_CRON=${PRODUCT_SYNC_CRON:-0 0 0 * * *}
+
+  inventory:
+    image: jojorisin/fake-store-inventoryservice:latest
+    environment:
+      - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
+      - SPRING_FLYWAY_BASELINE_VERSION=1
+      - SPRING_CLOUD_AWS_PARAMETERSTORE_ENABLED=false #overrides default in prod profile
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=${INVENTORY_DB_URL:-jdbc:postgresql://inventory-db:5432/inventorydb}
+      - SPRING_DATASOURCE_USERNAME=${INVENTORY_DB_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${INVENTORY_DB_PASS:-postgres}
+      - APP_QUEUES_CONFIRM_RESERVATION=${CONFIRM_RESERVATION_SQS}
+      - AWS_ACCESS_KEY_ID=${INV_AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${INV_AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-eu-north-1}
+      - SERVER_PORT=${INV_PORT:-8084}
+      - AUTH_PUBLIC_JWT_URL=${PUBLIC_JWT_URL:-http://auth-service:8081/api/internal/auth/.well-known/jwks.json}

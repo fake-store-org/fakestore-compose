@@ -1,0 +1,188 @@
+services:
+  gateway:
+    image: jojorisin/fake-store-gateway:latest
+    env_file:
+      - .env.local
+    depends_on:
+      - auth-service
+      - order-service
+      - product-service
+      - inventory-service
+    ports:
+      - "8080:8080"
+    environment:
+      - JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
+      - AUTH_SERVICE_URL=http://auth-service:8081
+      - PRODUCT_SERVICE_URL=http://product-service:8082
+      - ORDER_SERVICE_URL=http://order-service:8083
+      - INVENTORY_SERVICE_URL=http://inventory-service:8084
+      - AUTH_PUBLIC_JWT_URL=http://auth-service:8081/api/internal/auth/.well-known/jwks.json
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:5173,http://localhost:4200}
+
+  frontend:
+    image: jojorisin/fake-store-frontend:latest
+    ports:
+      - "5173:80"
+    depends_on:
+      - gateway
+
+  auth-service:
+    image: jojorisin/fake-store-authservice:latest
+    env_file:
+      - .env.local
+    depends_on:
+      - auth-db
+    ports:
+      - "${AUTH_PORT:-8081}:8081"
+    environment:
+      - SPRING_CLOUD_AWS_PARAMETERSTORE_ENABLED=false
+      - SERVER_PORT=${AUTH_PORT:-8081}
+      - SPRING_DATASOURCE_URL=${AUTH_DB_URL:-jdbc:postgresql://auth-db:5432/authdb}
+      - SPRING_DATASOURCE_USERNAME=${AUTH_DB_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${AUTH_DB_PASS:-postgres}
+      - JWT_PRIVATE_KEY=${AUTH_JWT_PRIVATE_KEY}
+      - JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
+      - JWT_EXPIRATION_MINUTES=${AUTH_JWT_EXP:-15}
+      - APP_COOKIE_REFRESH_EXPIRATION_SECONDS=${AUTH_REFRESH_EXP:-604800}
+      - APP_COOKIE_SAME_SITE=${AUTH_COOKIE_SAMESITE:-Lax}
+      - APP_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-false}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=${AUTH_DDL:-update}
+  auth-db:
+    image: postgres:15
+    ports:
+      - "5443:5432"
+    environment:
+      - POSTGRES_DB=authdb
+      - POSTGRES_USER=${AUTH_DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${AUTH_DB_PASS:-postgres}
+
+  order-service:
+    image: jojorisin/fake-store-orderservice:latest
+    env_file:
+      - .env.local
+    depends_on:
+      - orders-db
+      - localstack
+    ports:
+      - "${ORDERS_PORT:-8083}:8083"
+    environment:
+      - LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY=TRACE
+      - SPRING_PROFILES_ACTIVE=local
+      - SPRING_CLOUD_AWS_SQS_ENABLED=true
+      - SPRING_CLOUD_AWS_MESSAGING_SQS_ENABLED=true
+      - AWS_EC2_METADATA_DISABLED=true
+      - SPRING_CLOUD_AWS_SQS_FORCE_PATH_STYLE=true
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - SPRING_CLOUD_AWS_REGION_STATIC=us-east-1
+      - SPRING_CLOUD_AWS_SQS_ENDPOINT=http://localstack:4566
+      - SPRING_CLOUD_AWS_SQS_CREATE_IF_NOT_EXISTS=true
+      - SPRING_CLOUD_AWS_CREDENTIALS_ACCESS_KEY=test
+      - SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY=test
+      - SERVER_PORT=${ORDERS_PORT:-8083}
+      - SPRING_DATASOURCE_URL=${ORDERS_DB_URL:-jdbc:postgresql://orders-db:5432/ordersdb}
+      - SPRING_DATASOURCE_USERNAME=${ORDERS_DB_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${ORDERS_DB_PASS:-postgres}
+      - INVENTORY_SERVICE_URL=${ORDERS_INV_URL:-http://inventory-service:8084/api}
+      - PRODUCT_SERVICE_URL=${ORDERS_PROD_URL:-http://product-service:8082/api}
+      - STRIPE_API_KEY=${ORDERS_STRIPE_KEY}
+      - STRIPE_SUCCESS_URL=${ORDERS_STRIPE_SUCCESS_URL:-http://127.0.0.1:5173/success?session_id=}
+      - STRIPE_CANCEL_URL=${ORDERS_STRIPE_CANCEL_URL:-http://127.0.0.1:5173/cancel}
+      - CONFIRM_RESERVATION_SQS=confirm-reservation-event
+      - ORDER_PAID_SQS=order-paid-queue
+      - JWT_PUBLIC_KEY=${AUTH_PUBLIC_JWT_URL}
+  orders-db:
+    image: postgres:15
+    ports:
+      - "5444:5432"
+    environment:
+      - POSTGRES_DB=ordersdb
+      - POSTGRES_USER=${ORDERS_DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${ORDERS_DB_PASS:-postgres}
+
+  product-service:
+    image: jojorisin/fake-store-productservice:latest
+    command: ["sh", "-c", "sleep 10 && java -jar /app/app.jar"]
+    env_file:
+      - .env.local
+    depends_on:
+      products-db:
+        condition: service_healthy
+    ports:
+      - "${PROD_PORT:-8082}:8082"
+    environment:
+      - SERVER_PORT=${PROD_PORT:-8082}
+      - SPRING_DATASOURCE_URL=${PROD_DB_URL:-jdbc:postgresql://products-db:5432/productsdb}
+      - SPRING_DATASOURCE_USERNAME=${PROD_DB_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${PROD_DB_PASS:-postgres}
+      - FAKE_STORE_URL=https://fakestoreapi.com/products
+      - PRODUCT_SYNC_CRON=${PROD_CRON:-0 0 0 * * *}
+  products-db:
+    image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"] # Kommandot som kollar om DB svarar
+      interval: 5s
+      retries: 5
+    ports:
+      - "5445:5432"
+    environment:
+      - POSTGRES_DB=productsdb
+      - POSTGRES_USER=${PROD_DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${PROD_DB_PASS:-postgres}
+
+  inventory-service:
+    image: jojorisin/fake-store-inventoryservice:latest
+    env_file:
+      - .env.local
+    depends_on:
+      - inventory-db
+      - localstack
+    container_name: inventory-service
+    ports:
+      - "${INV_PORT:-8084}:8084"
+    environment:
+      - SPRING_CLOUD_AWS_SQS_ENABLED=true
+      - SPRING_CLOUD_AWS_MESSAGING_SQS_ENABLED=true
+      - SPRING_PROFILES_ACTIVE=local
+      - AWS_EC2_METADATA_DISABLED=true
+      - SPRING_CLOUD_AWS_SQS_FORCE_PATH_STYLE=true
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - SPRING_CLOUD_AWS_CREDENTIALS_ACCESS_KEY=test
+      - SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY=test
+      - AWS_REGION=us-east-1
+      - SPRING_CLOUD_AWS_REGION_STATIC=us-east-1
+      - SPRING_CLOUD_AWS_SQS_ENDPOINT=http://localstack:4566
+      - SPRING_CLOUD_AWS_SQS_CREATE_IF_NOT_EXISTS=true
+      - SERVER_PORT=${INV_PORT:-8084}
+      - SPRING_DATASOURCE_URL=${INV_DB_URL:-jdbc:postgresql://inventory-db:5432/inventorydb}
+      - SPRING_DATASOURCE_USERNAME=${INV_DB_USER:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${INV_DB_PASS:-postgres}
+      - CONFIRM_RESERVATION_SQS=confirm-reservation-event
+      - JWT_PUBLIC_KEY=${AUTH_PUBLIC_JWT_URL}
+  inventory-db:
+    image: postgres:15
+    ports:
+      - "5446:5432"
+    environment:
+      - POSTGRES_DB=inventorydb
+      - POSTGRES_USER=${INV_DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${INV_DB_PASS:-postgres}
+
+  localstack:
+    image: localstack/localstack:3.8.0
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - LS_DISABLE_AUTH=1
+      - LOCALSTACK_HOST=localstack
+    volumes:
+      - ./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh
+networks:
+  default:
+    name: micro-network
