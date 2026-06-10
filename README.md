@@ -56,3 +56,7 @@ Connect this to the Order Paid SQS for the orders-service.
 
 Reservation Confirmation
 Create an SQS queue for the orders-service to publish confirm-reservation events for the inventory-service.
+
+AWS / Docker swarm (docker-compose.aws)
+
+Deployed using Docker Swarm across two AWS EC2 free tier instances. To stay within the memory constraints of the free tier, each service is configured with explicit JVM heap limits via JAVA_OPTS and Docker memory limits to prevent OOM crashes. Sensitive configuration and secrets are managed using AWS Parameter Store via the Spring Cloud AWS Parameter Store integration.

@@ -1,0 +1,97 @@
+services:
+  gateway:
+    image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-north-1.amazonaws.com/gateway:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - JAVA_OPTS=-Xmx128m -Xms64m -XX:MaxMetaspaceSize=128m -Xss256k
+      - AUTH_SERVICE_URL=http://auth:8081
+      - PRODUCT_SERVICE_URL=http://products:8082
+      - ORDER_SERVICE_URL=http://orders:8083
+      - INVENTORY_SERVICE_URL=http://inventory:8084
+      - AUTH_PUBLIC_JWT_URL=http://auth:8081/api/internal/auth/.well-known/jwks.json
+    deploy:
+      resources:
+        limits:
+          memory: 250M
+        reservations:
+          memory: 150M
+      placement:
+        constraints:
+          - node.role == manager
+    networks:
+      - ecommerce-net
+
+  auth:
+    image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-north-1.amazonaws.com/auth:latest
+    environment:
+      - JAVA_OPTS=-Xmx160m -Xms64m -XX:MaxMetaspaceSize=160m -Xss256k
+      - SPRING_PROFILES_ACTIVE=prod
+    deploy:
+      resources:
+        limits:
+          memory: 350M
+        reservations:
+          memory: 150M
+      placement:
+        constraints:
+          - node.role == manager
+    networks:
+      - ecommerce-net
+
+  orders:
+    image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-north-1.amazonaws.com/orders:latest
+    environment:
+      - JAVA_OPTS=-Xmx128m -Xms64m -XX:MaxMetaspaceSize=128m -Xss256k
+      - SPRING_PROFILES_ACTIVE=prod
+      - PRODUCT_SERVICE_URL=http://products:8082/api
+      - INVENTORY_SERVICE_URL=http://inventory:8084/api
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+        reservations:
+          memory: 150M
+      placement:
+        constraints:
+          - node.role == worker
+    networks:
+      - ecommerce-net
+
+  products:
+    image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-north-1.amazonaws.com/products:latest
+    environment:
+      - JAVA_OPTS=-Xmx128m -Xms64m -XX:MaxMetaspaceSize=128m -Xss256k
+      - SPRING_PROFILES_ACTIVE=prod
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+        reservations:
+          memory: 150M
+      placement:
+        constraints:
+          - node.role == worker
+    networks:
+      - ecommerce-net
+
+  inventory:
+    image: ${AWS_ACCOUNT_ID}.dkr.ecr.eu-north-1.amazonaws.com/inventory:latest
+    environment:
+      - JAVA_OPTS=-Xmx128m -Xms64m -XX:MaxMetaspaceSize=128m -Xss256k
+      - SPRING_PROFILES_ACTIVE=prod
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+        reservations:
+          memory: 150M
+      placement:
+        constraints:
+          - node.role == worker
+    networks:
+      - ecommerce-net
+
+networks:
+  ecommerce-net:
+    driver: overlay
