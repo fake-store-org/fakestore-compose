@@ -11,20 +11,21 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
       - AUTH_SERVICE_URL=http://auth-service:8081
       - PRODUCT_SERVICE_URL=http://product-service:8082
       - ORDER_SERVICE_URL=http://order-service:8083
       - INVENTORY_SERVICE_URL=http://inventory-service:8084
       - AUTH_PUBLIC_JWT_URL=http://auth-service:8081/api/internal/auth/.well-known/jwks.json
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:5173,http://localhost:4200}
-
+      - AWS_REGION=us-east-1
   frontend:
     image: jojorisin/fake-store-frontend:latest
     ports:
       - "5173:80"
     depends_on:
       - gateway
+    environment:
+      - VITE_API_URL=/api
 
   auth-service:
     image: jojorisin/fake-store-authservice:latest
@@ -47,6 +48,8 @@ services:
       - APP_COOKIE_SAME_SITE=${AUTH_COOKIE_SAMESITE:-Lax}
       - APP_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-false}
       - SPRING_JPA_HIBERNATE_DDL_AUTO=${AUTH_DDL:-update}
+      - AUTH_PUBLIC_JWT_URL=http://auth-service:8081/api/internal/auth/.well-known/jwks.json
+
   auth-db:
     image: postgres:15
     ports:
@@ -66,6 +69,7 @@ services:
     ports:
       - "${ORDERS_PORT:-8083}:8083"
     environment:
+      - LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY=TRACE
       - SPRING_PROFILES_ACTIVE=local
       - SPRING_CLOUD_AWS_SQS_ENABLED=true
       - SPRING_CLOUD_AWS_MESSAGING_SQS_ENABLED=true
@@ -86,11 +90,12 @@ services:
       - INVENTORY_SERVICE_URL=${ORDERS_INV_URL:-http://inventory-service:8084/api}
       - PRODUCT_SERVICE_URL=${ORDERS_PROD_URL:-http://product-service:8082/api}
       - STRIPE_API_KEY=${ORDERS_STRIPE_KEY}
-      - STRIPE_SUCCESS_URL=${ORDERS_STRIPE_SUCCESS_URL:-http://127.0.0.1:5173/success?session_id=}
-      - STRIPE_CANCEL_URL=${ORDERS_STRIPE_CANCEL_URL:-http://127.0.0.1:5173/cancel}
+      - STRIPE_SUCCESS_URL=${ORDERS_STRIPE_SUCCESS_URL}
+      - STRIPE_CANCEL_URL=${ORDERS_STRIPE_CANCEL_URL}
       - CONFIRM_RESERVATION_SQS=confirm-reservation-event
       - ORDER_PAID_SQS=order-paid-queue
-      - JWT_PUBLIC_KEY=${AUTH_PUBLIC_JWT_URL}
+      - AUTH_PUBLIC_JWT_URL=http://auth-service:8081/api/internal/auth/.well-known/jwks.json
+
   orders-db:
     image: postgres:15
     ports:
@@ -117,6 +122,8 @@ services:
       - SPRING_DATASOURCE_PASSWORD=${PROD_DB_PASS:-postgres}
       - FAKE_STORE_URL=https://fakestoreapi.com/products
       - PRODUCT_SYNC_CRON=${PROD_CRON:-0 0 0 * * *}
+      - AUTH_PUBLIC_JWT_URL=http://auth-service:8081/api/internal/auth/.well-known/jwks.json
+
   products-db:
     image: postgres:15
     healthcheck:
@@ -159,7 +166,7 @@ services:
       - SPRING_DATASOURCE_USERNAME=${INV_DB_USER:-postgres}
       - SPRING_DATASOURCE_PASSWORD=${INV_DB_PASS:-postgres}
       - CONFIRM_RESERVATION_SQS=confirm-reservation-event
-      - JWT_PUBLIC_KEY=${AUTH_PUBLIC_JWT_URL}
+      - AUTH_PUBLIC_JWT_URL=http://auth-service:8081/api/internal/auth/.well-known/jwks.json
   inventory-db:
     image: postgres:15
     ports:
